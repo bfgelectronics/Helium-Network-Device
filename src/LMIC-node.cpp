@@ -57,7 +57,6 @@
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
-#include <Adafruit_ST7735.h>
 #include <Adafruit_GFX.h>
 #include <driver/adc.h>
 #include <CayenneLPP.h>
@@ -73,13 +72,6 @@
 
 CayenneLPP lpp(21);
 
-#define ST7735_CS  15
-#define ST7735_DC  13
-#define ST7735_MOSI 12
-#define ST7735_SCLK  14
-#define ST7735_RST  23
-
-Adafruit_ST7735 tft = Adafruit_ST7735(ST7735_CS,ST7735_DC,ST7735_MOSI,ST7735_SCLK,ST7735_RST);
 
 AHTxx aht21(AHTXX_ADDRESS_X38, AHT2x_SENSOR);
 
@@ -816,29 +808,6 @@ void processWork(ostime_t doWorkJobTimeStamp)
 
         currentCount = 0;
 
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 5);
-        tft.setTextSize(1);
-        tft.print("Timestamp: ");
-        tft.println(timestamp);
-        tft.print("Temp: ");
-        tft.print(temp);
-        tft.println(" *C");
-        tft.print("Humi: ");
-        tft.print(humi);
-        tft.println(" %");
-        tft.print("Battery: ");
-        tft.print(batteryPercent);
-        tft.println(" %");
-        tft.print("Voltage: ");
-        tft.print(Voltage);
-        tft.println(" V");
-        tft.print("RSSI: ");
-        tft.print(LMIC.rssi);
-        tft.println(" dBm");
-        tft.print("Light: ");
-        tft.print(Light);
-        tft.println(" Lux");
 
 
         #ifdef USE_SERIAL
@@ -1037,22 +1006,10 @@ void setup()
     pinMode(LightSensorPin, INPUT);
 
 
-    tft.initR(INITR_BLACKTAB);
-    tft.setRotation(2);
-    tft.fillScreen(ST77XX_BLACK);
-
     int AN_Pot1_Result = analogRead(BatteryAnalogPin);
     float Voltage = (AN_Pot1_Result * 3.3) / 4095.0 * 2.0;
 
     double batteryPercent = lipoVoltageToPercent(Voltage);
-
-    tft.print("Battery: ");
-    tft.print(Voltage);
-    tft.println(" V");
-
-    tft.println("");
-
-    tft.println("Starting up...");
 
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( UncorrectedColor );
     FastLED.setBrightness(  BRIGHTNESS );
