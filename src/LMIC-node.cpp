@@ -56,6 +56,7 @@
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
+#include <LiquidCrystal_I2C.h>
 #include <Adafruit_GFX.h>
 #include <driver/adc.h>
 #include <CayenneLPP.h>
@@ -63,8 +64,7 @@
 #include <AHTxx.h>
 #include <Wire.h>
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3D
@@ -817,6 +817,20 @@ void processWork(ostime_t doWorkJobTimeStamp)
         double humi = sensorsValues[Channels::Humidity];
         double Light = sensorsValues[Channels::LightIntensity];
 
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(Light);
+        lcd.print(" Lux");
+        lcd.print(" ");
+        lcd.print(Voltage);
+        lcd.print(" V");
+        lcd.setCursor(0, 1);
+        lcd.print(temp);
+        lcd.print(" C");
+        lcd.print(" ");
+        lcd.print(humi);
+        lcd.print(" %");
+
 #ifdef USE_SERIAL
         printEvent(timestamp, "Input data collected", PrintTarget::Serial);
         printSpaces(serial, MESSAGE_INDENT);
@@ -1011,6 +1025,12 @@ void setup()
 
     // Place code for initializing sensors etc. here.
 
+    lcd.init(); // initialize the lcd
+    // Print a message to the LCD.
+    lcd.backlight();
+    lcd.setCursor(3, 0);
+    lcd.print("Starting...");
+
     aht21.begin();
 
     pinMode(BatteryAnalogPin, INPUT);
@@ -1041,6 +1061,10 @@ void setup()
     {
         pinMode(MULTIPLEXER_PINS[i], OUTPUT);
     }
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Initialised");
 
     //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
     //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▀ █ █ █ █
