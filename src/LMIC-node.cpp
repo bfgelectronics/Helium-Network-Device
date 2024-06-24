@@ -56,49 +56,45 @@
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
-#include <LiquidCrystal_I2C.h>
 #include <Adafruit_GFX.h>
 #include <driver/adc.h>
 #include <CayenneLPP.h>
-#include <FastLED.h>
 #include <AHTxx.h>
 #include <Wire.h>
-
-LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3D
 
-CayenneLPP lpp(21);
+#define MYPORT_TX 13
+#define MYPORT_RX 14
+
+CayenneLPP lpp(51);
 
 AHTxx aht21(AHTXX_ADDRESS_X38, AHT2x_SENSOR);
 
 #define BatteryAnalogPin 35
 
-#define LED_PIN 2
-#define NUM_LEDS 32
-#define BRIGHTNESS 254
-#define LED_TYPE WS2812
-#define COLOR_ORDER GRB
-CRGB leds[NUM_LEDS];
-
-const int MULTIPLEXER_PINS[4] = {14, 12, 13, 15};
-
-#define LightSensorPin 34
-
-#define AnlogInAtenuation 2200 / 1000
-
-const int CURRENT_CHANNELS = 4;
+const int CURRENT_CHANNELS = 10;
 
 enum Channels
 {
     Temperature,
     Humidity,
     Battery,
-    LightIntensity
+    LightIntensity,
+    Current1,
+    Current2,
+    Current3,
+    Voltage1,
+    Voltage2,
+    Voltage3
 };
 
-double sensorsValues[4] = {0, 0, 0, 0};
+double sensorsValues[10];
+
+float voltages[3] = {0, 0, 0};
+float currents[3] = {0, 0, 0};
+float light_intensity = 0;
 
 int currentCount = 0;
 
@@ -759,20 +755,14 @@ void processWork(ostime_t doWorkJobTimeStamp)
 
         currentCount = 0;
 
+        Serial2.print("<read>");
+        delay(100);
+        Serial2.println("<voltage>");
+        Serial2.println("<current>");
+        Serial2.println("<intensity>");
+
         for (int i = 0; i < sensorReadTimes; i++)
         {
-
-            digitalWrite(MULTIPLEXER_PINS[0], LOW);
-            digitalWrite(MULTIPLEXER_PINS[1], LOW);
-            digitalWrite(MULTIPLEXER_PINS[2], LOW);
-            digitalWrite(MULTIPLEXER_PINS[3], LOW);
-
-            delay(1);
-
-            double volts = adc1_get_raw(ADC1_CHANNEL_6) * 5 / 1024.0;
-            double amps = volts / 10000.0; // across 10,000 Ohms
-            double microamps = amps * 1000000;
-            double luminosity = microamps * 2.0;
 
             double temp = aht21.readTemperature();
             double humi = aht21.readHumidity();
@@ -794,11 +784,9 @@ void processWork(ostime_t doWorkJobTimeStamp)
                 humi = sensorsValues[Channels::Humidity];
             }
 
-            int AN_Pot1_Result = adc1_get_raw(ADC1_CHANNEL_7) / AnlogInAtenuation;
-
             double Voltage = adc1_get_raw(ADC1_CHANNEL_7) / 1023.0 * 2 * 3.6;
 
-            double currentValues[CURRENT_CHANNELS] = {temp, humi, Voltage, luminosity};
+            double currentValues[CURRENT_CHANNELS] = {temp, humi, Voltage, 1, 2, 3, 4, 5, 6, 7};
 
             for (int j = 0; j < CURRENT_CHANNELS; j++)
             {
@@ -811,25 +799,19 @@ void processWork(ostime_t doWorkJobTimeStamp)
             sensorsValues[i] /= sensorReadTimes;
         }
 
-        double Voltage = sensorsValues[Channels::Battery];
-        double batteryPercent = lipoVoltageToPercent(Voltage);
-        double temp = sensorsValues[Channels::Temperature];
-        double humi = sensorsValues[Channels::Humidity];
-        double Light = sensorsValues[Channels::LightIntensity];
+        Serial2.println("<voltage>");
+        Serial2.println("<current>");
+        Serial2.println("<intensity>");
 
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(Light);
-        lcd.print(" Lux");
-        lcd.print(" ");
-        lcd.print(Voltage);
-        lcd.print(" V");
-        lcd.setCursor(0, 1);
-        lcd.print(temp);
-        lcd.print(" C");
-        lcd.print(" ");
-        lcd.print(humi);
-        lcd.print(" %");
+        sensorsValues[Channels::Voltage1] = voltages[0];
+        sensorsValues[Channels::Voltage2] = voltages[1];
+        sensorsValues[Channels::Voltage3] = voltages[2];
+
+        sensorsValues[Channels::Current1] = currents[0];
+        sensorsValues[Channels::Current2] = currents[1];
+        sensorsValues[Channels::Current3] = currents[2];
+
+        sensorsValues[Channels::LightIntensity] = light_intensity;
 
 #ifdef USE_SERIAL
         printEvent(timestamp, "Input data collected", PrintTarget::Serial);
@@ -847,7 +829,7 @@ void processWork(ostime_t doWorkJobTimeStamp)
             printEvent(timestamp, "Uplink not scheduled because TxRx pending", PrintTarget::Serial);
 #endif
 #ifdef USE_DISPLAY
-            printEvent(timestamp, "UL not scheduled", PrintTarget::Display);
+            printEvent(timestamp, "UL sensorsValues[inot scheduled", PrintTarget::Display);
 #endif
         }
         else
@@ -859,6 +841,11 @@ void processWork(ostime_t doWorkJobTimeStamp)
 
             for (int i = 0; i < CURRENT_CHANNELS; i++)
             {
+                serial.print("Channel ");
+                serial.print(i);
+                serial.print(": ");
+                serial.println(sensorsValues[i]);
+
                 lpp.addAnalogOutput(i + 1, sensorsValues[i]);
             }
 
@@ -936,41 +923,6 @@ void processDownlink(ostime_t txCompleteTimestamp, uint8_t fPort, uint8_t *data,
         }
     }
 
-    if (strcmp(command, "LED") == 0)
-    {
-        int red = atoi(arguments[0]);
-        int green = atoi(arguments[1]);
-        int blue = atoi(arguments[2]);
-
-        for (int i = 0; i < NUM_LEDS; i++)
-        {
-            leds[i].setRGB(red, green, blue);
-        }
-
-        FastLED.show();
-    }
-
-    if (strcmp(command, "LED_") == 0)
-    {
-        int red = atoi(arguments[0]);
-        int green = atoi(arguments[1]);
-        int blue = atoi(arguments[2]);
-        int led = atoi(arguments[3]);
-
-        leds[led].setRGB(red, green, blue);
-
-        FastLED.show();
-    }
-
-    if (strcmp(command, "LED_B") == 0)
-    {
-        int brightness = atoi(arguments[0]);
-
-        FastLED.setBrightness(brightness);
-
-        FastLED.show();
-    }
-
     free(command);
     free(argumentLengths);
     for (int i = 0; i < argumentCount; i++)
@@ -986,6 +938,9 @@ void processDownlink(ostime_t txCompleteTimestamp, uint8_t fPort, uint8_t *data,
 
 void setup()
 {
+
+    Serial2.begin(115200, SERIAL_8N1, MYPORT_RX, MYPORT_TX);
+
     // boardInit(InitType::Hardware) must be called at start of setup() before anything else.
     bool hardwareInitSucceeded = boardInit(InitType::Hardware);
 
@@ -1025,46 +980,14 @@ void setup()
 
     // Place code for initializing sensors etc. here.
 
-    lcd.init(); // initialize the lcd
-    // Print a message to the LCD.
-    lcd.backlight();
-    lcd.setCursor(3, 0);
-    lcd.print("Starting...");
-
     aht21.begin();
 
     pinMode(BatteryAnalogPin, INPUT);
-    pinMode(LightSensorPin, INPUT);
 
     int AN_Pot1_Result = analogRead(BatteryAnalogPin);
     float Voltage = (AN_Pot1_Result * 3.3) / 4095.0 * 2.0;
 
     double batteryPercent = lipoVoltageToPercent(Voltage);
-
-    FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(UncorrectedColor);
-    FastLED.setBrightness(BRIGHTNESS);
-
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-        leds[i] = CRGB::White;
-        FastLED.show();
-        delay(4);
-    }
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-        leds[i] = CRGB::Black;
-        FastLED.show();
-        delay(4);
-    }
-
-    for (int i = 0; i < 4; i++)
-    {
-        pinMode(MULTIPLEXER_PINS[i], OUTPUT);
-    }
-
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Initialised");
 
     //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
     //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▀ █ █ █ █
@@ -1079,7 +1002,75 @@ void setup()
     os_setCallback(&doWorkJob, doWorkCallback);
 }
 
+char serialBuffer[100];
+int serialBufferIndex = 0;
+
 void loop()
 {
     os_runloop_once();
+
+    if (Serial2.available())
+    {
+        char c = Serial2.read();
+        if (c == '\n')
+        {
+            char value[10];
+
+            char values[50];
+
+            bool found_value = false;
+            int found_index = 0;
+
+            char *colonPos = strchr(serialBuffer, ':');
+            if (colonPos != NULL)
+            {
+                int valueLength = colonPos - serialBuffer;
+
+                strncpy(value, serialBuffer, valueLength);
+                value[valueLength] = '\0';
+
+                strcpy(values, colonPos + 1);
+                values[strlen(values)] = '\0';
+            }
+
+            int res_index = 0;
+            char res_value[100];
+
+            if (strcmp(value, "Voltage") == 0)
+            {
+                char *token = strtok(values, ",");
+                int index = 0;
+                while (token != NULL && index < 3)
+                {
+                    voltages[index] = atof(token);
+                    token = strtok(NULL, ",");
+                    index++;
+                }
+            }
+
+            if (strcmp(value, "Current") == 0)
+            {
+                char *token = strtok(values, ",");
+                int index = 0;
+                while (token != NULL && index < 3)
+                {
+                    currents[index] = atof(token);
+                    token = strtok(NULL, ",");
+                    index++;
+                }
+            }
+
+            if (strcmp(value, "Light") == 0)
+                light_intensity = atof(values);
+
+
+            memset(serialBuffer, 0, sizeof(serialBuffer));
+            serialBufferIndex = 0;
+        }
+        else
+        {
+            serialBuffer[serialBufferIndex] = c;
+            serialBufferIndex++;
+        }
+    }
 }
